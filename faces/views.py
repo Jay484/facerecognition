@@ -1,74 +1,78 @@
 from django.shortcuts import render
-from django.http import HttpResponse,JsonResponse
+from django.http import HttpResponse, JsonResponse
 import face_recognition
 import cv2
-import sys
+import requests
 import numpy as np
-from os import path
+from os import path,remove
 import pickle
 
+base_url = "https://supportesimageset.s3.amazonaws.com/"
 
 
 def index(request):
-    _name= request.GET.get('action')
-    _path= request.GET.get('path')
-    if(_name=="train"):
-        if(path.exists("encodings.enc")==False):
-            f_en=[]
-            f_ls=[]
-            with open("encodings.enc","wb") as fl:
-                pickle.dump(f_en,fl)
+    _action = request.GET.get('action')
+    _path = request.GET.get('path')
+    resp = requests.get(base_url + _path)
+    open(_path+".jpeg", "wb").write(resp.content)
+    if _action == "train":
+        if not path.exists("encodings.enc"):
+            f_en = []
+            f_ls = []
+            with open("encodings.enc", "wb") as fl:
+                pickle.dump(f_en, fl)
             fl.close()
-            with open("facelist.enc","wb") as fl:
-                pickle.dump(f_ls,fl)
+            with open("facelist.enc", "wb") as fl:
+                pickle.dump(f_ls, fl)
             fl.close()
 
-        image_path= _path+".jpeg"
+        image_path = _path + ".jpeg"
 
-        face= face_recognition.load_image_file(image_path)
-        face_enc= face_recognition.face_encodings(face)[0]
-        face_label= _path
+        face = face_recognition.load_image_file(image_path)
+        face_enc = face_recognition.face_encodings(face)[0]
+        face_label = _path
 
-        fl= open("encodings.enc","rb")
-        known_face_encodings= pickle.load(fl)
+        fl = open("encodings.enc", "rb")
+        known_face_encodings = pickle.load(fl)
         fl.close()
 
-        fl= open("encodings.enc","wb")
+        fl = open("encodings.enc", "wb")
         known_face_encodings.append(face_enc)
-        pickle.dump(known_face_encodings,fl)
+        pickle.dump(known_face_encodings, fl)
         fl.close()
 
-        fl= open("facelist.enc","rb")
-        known_face_list= pickle.load(fl)
+        fl = open("facelist.enc", "rb")
+        known_face_list = pickle.load(fl)
         fl.close()
 
-        fl= open("facelist.enc","wb")
+        fl = open("facelist.enc", "wb")
         known_face_list.append(face_label)
-        pickle.dump(known_face_list,fl)
+        pickle.dump(known_face_list, fl)
         fl.close()
-        return JsonResponse("name:{}".format(_name),safe=False)
+        nm = [_action]
+        remove(_path+".jpeg")
+        return JsonResponse(nm, safe=False)
 
-    if(_name=="test"):
-        fl=open("encodings.enc","rb")
-        known_face_encodings= pickle.load(fl)
+    if _action == "test":
+        fl = open("encodings.enc", "rb")
+        known_face_encodings = pickle.load(fl)
         fl.close()
 
-        fl= open("facelist.enc","rb")
-        known_face_names= pickle.load(fl)
+        fl = open("facelist.enc", "rb")
+        known_face_names = pickle.load(fl)
         fl.close()
-        
-        frame= cv2.imread(_path+".jpeg")
+
+        frame = cv2.imread(_path + ".jpeg")
 
         small_frame = cv2.resize(frame, (0, 0), fx=0.25, fy=0.25)
 
-    # Convert the image from BGR color (which OpenCV uses) to RGB color (which face_recognition uses)
+        # Convert the image from BGR color (which OpenCV uses) to RGB color (which face_recognition uses)
         rgb_small_frame = small_frame[:, :, ::-1]
 
         face_locations = face_recognition.face_locations(rgb_small_frame)
         face_encodings = face_recognition.face_encodings(rgb_small_frame, face_locations)
 
-        face_names=[]
-        resp={}
+        face_names = []
         for face_encoding in face_encodings:
             # See if the face is a match for the known face(s)
             matches = face_recognition.compare_faces(known_face_encodings, face_encoding)
@@ -85,9 +89,8 @@ def index(request):
             if matches[best_match_index]:
                 name = known_face_names[best_match_index]
                 face_names.append(name)
-            resp["name"]=face_names
-        return JsonResponse(resp,safe=False)
+            remove(_path+".jpeg")
+        return JsonResponse(face_names, safe=False)
 
 
-    
 # Create your views here.
